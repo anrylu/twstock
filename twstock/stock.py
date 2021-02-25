@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import datetime
+import json
+import os
+import os.path
 import urllib.parse
 from collections import namedtuple
 
@@ -31,6 +34,9 @@ DATATUPLE = namedtuple('Data', ['date', 'capacity', 'turnover', 'open',
 
 
 class BaseFetcher(object):
+
+    CACHE_FILE_FMT = "cached/%d%02d_%s.json"
+
     def fetch(self, year, month, sid, retry):
         pass
 
@@ -44,6 +50,25 @@ class BaseFetcher(object):
     def purify(self, original_data):
         pass
 
+    def read_cache(self, year, month, sid):
+        ret = []
+        file_path = self.CACHE_FILE_FMT % (year, month, sid)
+        if os.path.exists(file_path):
+            with open(file_path) as data_file:
+                try:
+                    ret = json.load(data_file)
+                except Exception:
+                    ret = []
+        return ret
+
+    def write_cache(self, year, month, sid, data):
+        file_path = self.CACHE_FILE_FMT % (year, month, sid)
+        folder_path = os.path.dirname(file_path)
+        if not os.path.exists(folder_path):
+            os.mkdir(folder_path)
+        with open(file_path, 'w') as data_file:
+            json.dump(data, data_file)
+
 
 class TWSEFetcher(BaseFetcher):
     REPORT_URL = urllib.parse.urljoin(
@@ -54,18 +79,21 @@ class TWSEFetcher(BaseFetcher):
 
     def fetch(self, year: int, month: int, sid: str, retry: int=5):
         params = {'date': '%d%02d01' % (year, month), 'stockNo': sid}
-        for retry_i in range(retry):
-            r = requests.get(self.REPORT_URL, params=params,
-                             proxies=get_proxies())
-            try:
-                data = r.json()
-            except JSONDecodeError:
-                continue
+        data = self.read_cache(year, month, sid)
+        if not data:
+            for retry_i in range(retry):
+                r = requests.get(self.REPORT_URL, params=params,
+                                proxies=get_proxies())
+                try:
+                    data = r.json()
+                    self.write_cache(year, month, sid, data)
+                except JSONDecodeError:
+                    continue
+                else:
+                    break
             else:
-                break
-        else:
-            # Fail in all retries
-            data = {'stat': '', 'data': []}
+                # Fail in all retries
+                data = {'stat': '', 'data': []}
 
         if data['stat'] == 'OK':
             data['data'] = self.purify(data)
@@ -101,18 +129,21 @@ class TPEXFetcher(BaseFetcher):
 
     def fetch(self, year: int, month: int, sid: str, retry: int=5):
         params = {'d': '%d/%d' % (year - 1911, month), 'stkno': sid}
-        for retry_i in range(retry):
-            r = requests.get(self.REPORT_URL, params=params,
-                             proxies=get_proxies())
-            try:
-                data = r.json()
-            except JSONDecodeError:
-                continue
+        data = self.read_cache(year, month, sid)
+        if not data:
+            for retry_i in range(retry):
+                r = requests.get(self.REPORT_URL, params=params,
+                                proxies=get_proxies())
+                try:
+                    data = r.json()
+                    self.write_cache(year, month, sid, data)
+                except JSONDecodeError:
+                    continue
+                else:
+                    break
             else:
-                break
-        else:
-            # Fail in all retries
-            data = {'aaData': []}
+                # Fail in all retries
+                data = {'aaData': []}
 
         data['data'] = []
         if data['aaData']:
