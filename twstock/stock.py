@@ -35,7 +35,7 @@ DATATUPLE = namedtuple('Data', ['date', 'capacity', 'turnover', 'open',
 
 class BaseFetcher(object):
 
-    CACHE_FILE_FMT = "cached/%d%02d_%s.json"
+    CACHE_FILE_FMT = "cache/%d%02d_%s.json"
 
     def fetch(self, year, month, sid, retry):
         pass
